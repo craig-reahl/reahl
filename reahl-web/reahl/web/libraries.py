@@ -273,15 +273,15 @@ class Holder(Library):
 
 
 class Bootstrap4(Library):
-    """Version 4.0.0 alpha 2 of `Bootstrap <http://getbootstrap.com/>`_.
+    """Version 4.0.0 alpha 4 of `Bootstrap <http://getbootstrap.com/>`_.
     """
     def __init__(self):
         super(Bootstrap4, self).__init__('bootstrap4')
         self.shipped_in_directory = '/reahl/web/static'
         self.files = [
-                      'bootstrap-4.0.0-alpha.2/css/bootstrap.css',
-                      'bootstrap-4.0.0-alpha.2/css/bootstrap.css.map',
-                      'bootstrap-4.0.0-alpha.2/js/bootstrap.js'
+                      'bootstrap-4.0.0-alpha.4/css/bootstrap.css',
+                      'bootstrap-4.0.0-alpha.4/css/bootstrap.css.map',
+                      'bootstrap-4.0.0-alpha.4/js/bootstrap.js'
                       ]
 
 
@@ -312,17 +312,17 @@ class ReahlBootstrap4Additions(Library):
                       ]
 
 class Tether(Library):
-    """Version 1.1.1 of `Tether <http://github.hubspot.com/tether/>`_.
+    """Version 1.3.3 of `Tether <http://github.hubspot.com/tether/>`_.
     """
     def __init__(self):
         super(Tether, self).__init__('tether')
         self.shipped_in_directory = '/reahl/web/static'
         self.files = [
-                      'tether.1.1.1/css/tether.css',
-                      'tether.1.1.1/css/tether-theme-arrows.css',
-                      'tether.1.1.1/css/tether-theme-arrows-dark.css',
-                      'tether.1.1.1/css/tether-theme-basic.css',
-                      'tether.1.1.1/js/tether.js'
+                      'tether.1.3.3/css/tether.css',
+                      'tether.1.3.3/css/tether-theme-arrows.css',
+                      'tether.1.3.3/css/tether-theme-arrows-dark.css',
+                      'tether.1.3.3/css/tether-theme-basic.css',
+                      'tether.1.3.3/js/tether.js'
                       ]
 
 
