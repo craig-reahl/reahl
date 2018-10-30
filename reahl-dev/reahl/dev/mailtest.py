@@ -23,107 +23,175 @@ Copyright (C) 2006 Reahl Software Services (Pty) Ltd.  All rights reserved. (www
 from __future__ import print_function, unicode_literals, absolute_import, division
 
 import six
-import asyncore
 import logging
-from smtpd import DebuggingServer, SMTPServer
-from threading import Thread
 import email
-import platform
-
-from pkg_resources import parse_version
 
 from reahl.dev.devshell import WorkspaceCommand
 
 #------------------------------------------------[ utilities ]
 
+if six.PY2:
+    #asyncore has been deprecated, preserving this implementation here for python2 users
+    import asyncore
+    import platform
+    from threading import Thread
+    from pkg_resources import parse_version
+    from smtpd import DebuggingServer, SMTPServer
 
-class EchoSMTPServer(DebuggingServer):
-    def __init__(self):
-        if six.PY2 or parse_version(platform.python_version()) < parse_version('3.5.0'):
-            init_kwargs = {}
-        else:
-            init_kwargs = dict(decode_data=True)
-        DebuggingServer.__init__(self, ('localhost', 8025), (None, 0), **init_kwargs)
- 
-    def process_message(self, peer, mailfrom, rcpttos, data, **kwargs):
-        #Parse the message into an email.Message instance
-        logging.debug("Recieved Message")
-        m = email.message_from_string(data)
-        logging.debug("Parsed Message")
+    class EchoSMTPServer(DebuggingServer):
+        def __init__(self):
+            if six.PY2 or parse_version(platform.python_version()) < parse_version('3.5.0'):
+                init_kwargs = {}
+            else:
+                init_kwargs = dict(decode_data=True)
+            DebuggingServer.__init__(self, ('localhost', 8025), (None, 0), **init_kwargs)
 
-        self.current_id = m['Message-Id']
-        self.process_simple_message(m)
+        def process_message(self, peer, mailfrom, rcpttos, data, **kwargs):
+            #Parse the message into an email.Message instance
+            logging.debug("Received Message")
+            m = email.message_from_string(data)
+            logging.debug("Parsed Message")
 
-    def process_simple_message(self, message):
-        print((self.message_as_text(message)))
+            self.current_id = m['Message-Id']
+            self.process_simple_message(m)
 
-    def message_as_text(self, message):
-        text = "Processing Message: %s\n" % self.current_id
-        text += "   From:%s \n" % message['From']
-        text += "   To:%s \n" % message['To']
-        text += "   Subject:%s \n" % message['Subject']
-        if not message.is_multipart():
-            text += "   Body:%s\n " % message.get_payload(decode=1)
-        else:
-            text += "   Body:\n"
-            for part in message.walk():
-                text += '%s \n' % part.get_payload(decode=1)
-        return text
+        def process_simple_message(self, message):
+            print(self.message_as_text(message))
 
-
-class ServeSMTP(WorkspaceCommand):
-    """Runs an SMTP server on port 8025 for testing."""
-    keyword = 'servesmtp'
-    def execute(self, args):
-        server = EchoSMTPServer()
-        print("Running Echo SMTP Server on port 8025, type [ctrl-c] to exit.")
-        try:
-            asyncore.loop()
-        except KeyboardInterrupt:
-            pass
-        
-
-class FakeSMTPServer(EchoSMTPServer):
-
-    def __init__(self, call_back_function=None):
-        EchoSMTPServer.__init__(self)
-        self.call_back_function = call_back_function
-
-    #A place to store the current ID of the message that we are processing.
-    current_id = 0
-
-    def handle_close(self):
-        logging.debug("close called")
-
-    def process_simple_message(self, message):
-        logging.debug(self.message_as_text(message))
-
-        if self.call_back_function:
-            self.call_back_function(message)
+        def message_as_text(self, message):
+            text = "Processing Message: %s\n" % self.current_id
+            text += "   From:%s \n" % message['From']
+            text += "   To:%s \n" % message['To']
+            text += "   Subject:%s \n" % message['Subject']
+            if not message.is_multipart():
+                text += "   Body:%s\n " % message.get_payload(decode=1)
+            else:
+                text += "   Body:\n"
+                for part in message.walk():
+                    text += '%s \n' % part.get_payload(decode=1)
+            return text
 
 
-class MailTester(object):
+    class ServeSMTP(WorkspaceCommand):
+        """Runs an SMTP server on port 8025 for testing."""
+        keyword = 'servesmtp'
+        def execute(self, args):
+            server = EchoSMTPServer()
+            print("Running Echo SMTP Server on port 8025, type [ctrl-c] to exit.")
+            try:
+                asyncore.loop()
 
-    def __init__(self, call_back_function=None):
-        self.call_back_function = call_back_function
-        self.running = False
+            except KeyboardInterrupt:
+                pass
 
-    def main_loop(self):
-        while self.running:
-            logging.debug("mainloop...")
-            asyncore.loop(timeout=1, count=1)
-        self.fake_server.close()
+    class FakeSMTPServer(EchoSMTPServer):
 
-    def start(self):
-        self.fake_server = FakeSMTPServer(self.call_back_function)
-        self.thread = Thread(target=self.main_loop)
-        self.running = True
-        self.thread.start()
+        def __init__(self, call_back_function=None):
+            EchoSMTPServer.__init__(self)
+            self.call_back_function = call_back_function
 
-    def stop(self):
-        logging.debug("stop called")
-        self.running = False
-        self.thread.join()
+        #A place to store the current ID of the message that we are processing.
+        current_id = 0
+
+        def handle_close(self):
+            logging.debug("close called")
+
+        def process_simple_message(self, message):
+            logging.debug(self.message_as_text(message))
+
+            if self.call_back_function:
+                self.call_back_function(message)
 
 
+    class MailTester(object):
 
+        def __init__(self, call_back_function=None):
+            self.call_back_function = call_back_function
+            self.running = False
+
+        def main_loop(self):
+            while self.running:
+                logging.debug("mainloop")
+                asyncore.loop(timeout=1, count=1)
+            self.fake_server.close()
+
+        def start(self):
+            self.fake_server = FakeSMTPServer(self.call_back_function)
+            self.thread = Thread(target=self.main_loop)
+            self.running = True
+            self.thread.start()
+
+        def stop(self):
+            logging.debug("stop called")
+            self.running = False
+            self.thread.join()
+
+else:
+
+    from aiosmtpd.controller import Controller
+
+    class EchoSMTPHandler(object):
+
+        async def handle_DATA(self, server, session, envelope):
+            logging.debug("Received Message")
+            m = email.message_from_string(envelope.content.decode('utf8', errors='replace'))
+            logging.debug("Parsed Message")
+            self.process_simple_message(m)
+            return '250 Message accepted for delivery'
+
+        def process_simple_message(self, message):
+            print(self.message_as_text(message))
+
+        def message_as_text(self, message):
+            text = "Processing Message: "
+            text += "   From:%s \n" % message['From']
+            text += "   To:%s \n" % message['To']
+            text += "   Subject:%s \n" % message['Subject']
+            if not message.is_multipart():
+                text += "   Body:%s\n " % message.get_payload(decode=1)
+            else:
+                text += "   Body:\n"
+                for part in message.walk():
+                    text += '%s \n' % part.get_payload(decode=1)
+            return text
+
+
+    class LocalhostTestController(Controller):
+        def __init__(self, handler):
+            super(LocalhostTestController, self).__init__(handler, hostname='127.0.0.1', port=8025)
+
+
+    class ServeSMTP(WorkspaceCommand):
+        """Runs an SMTP server on port 8025 for testing."""
+        keyword = 'servesmtp'
+        def execute(self, args):
+            controller = LocalhostTestController(EchoSMTPHandler())
+            controller.start()
+            input("Running Echo SMTP Server on port 8025, type [ENTER] to exit.\n\n")
+            controller.stop()
+
+
+    class HandlerWithCallback(EchoSMTPHandler):
+
+        def __init__(self, call_back_function=None):
+            super(HandlerWithCallback, self).__init__()
+            self.call_back_function = call_back_function
+
+        def process_simple_message(self, message):
+            logging.debug(self.message_as_text(message))
+
+            if self.call_back_function:
+                self.call_back_function(message)
+
+
+    class MailTester(object):
+
+        def __init__(self, call_back_function=None):
+            self.controller = LocalhostTestController(HandlerWithCallback(call_back_function))
+
+        def start(self):
+            self.controller.start()
+
+        def stop(self):
+            logging.debug("stop called")
+            self.controller.stop()
