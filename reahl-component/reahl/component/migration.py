@@ -72,17 +72,25 @@ class MigrationSchedule(object):
         self.phases_in_order = phases
         self.phases = dict([(i, []) for i in phases])
 
-    def schedule(self, phase, to_call, *args, **kwargs):
+    def schedule(self, phase, stack_trace_list, to_call, *args, **kwargs):
         try:
-            self.phases[phase].append((to_call, args, kwargs))
+            self.phases[phase].append((to_call, stack_trace_list, args, kwargs))
         except KeyError as e:
             raise ProgrammerError('A phase with name<%s> does not exist.' % phase)
 
     def execute(self, phase):
         logging.getLogger(__name__).info('Executing schema change phase %s' % phase)
-        for to_call, args, kwargs in self.phases[phase]:
+        for to_call, stack_trace_list, args, kwargs in self.phases[phase]:
             logging.getLogger(__name__).debug(' change: %s(%s, %s)' % (to_call.__name__, args, kwargs))
-            to_call(*args, **kwargs)
+            try:
+                to_call(*args, **kwargs)
+            except:
+                stack_size = len(stack_trace_list)
+                count  = 1
+                for i in stack_trace_list:
+                    logging.getLogger(__name__).error('Stack Trace for %s [%s of %s]: %s' % (to_call.__name__, count,stack_size,i))
+                    count += 1
+                raise
 
     def execute_all(self):
         for phase in self.phases_in_order:
@@ -126,7 +134,15 @@ class Migration(object):
            :param args: The positional arguments to be passed in the call.
            :param kwargs: The keyword arguments to be passed in the call.
         """
-        self.changes.schedule(phase, to_call, *args, **kwargs)
+        def get_stack_trace():
+            import inspect
+            stack_trace = []
+
+            for stack_item in inspect.stack()[1:]:
+                caller = inspect.getframeinfo(stack_item[0])
+                stack_trace.append("%s:%d" % (caller.filename, caller.lineno))
+            return stack_trace[::-1] #reversed
+        self.changes.schedule(phase, get_stack_trace(), to_call, *args, **kwargs)
 
     def schedule_upgrades(self):
         """Override this method in a subclass in order to supply custom logic for changing the database schema. This
