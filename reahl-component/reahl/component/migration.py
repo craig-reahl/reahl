@@ -25,31 +25,68 @@ import inspect
 from reahl.component.exceptions import ProgrammerError
 
 
-class MigrationRun(object):
+class MigrationSeries(object):
     def __init__(self, orm_control, eggs_in_order):
+        self.orm_control = orm_control
+        self.eggs_in_order = eggs_in_order
+
+    def run(self):
+
+        versions_of_migrations = []
+        for migration_list in [egg.migrations_in_order for egg in self.eggs_in_order]:
+            for migration in migration_list:
+                if migration.version not in versions_of_migrations:
+                    versions_of_migrations.append(migration.version)
+
+        migration_runs = {}
+        egg_highest_migration_version = {}
+        for migration_version in versions_of_migrations:
+            for egg in self.eggs_in_order:
+                current_schema_version = egg_highest_migration_version.setdefault(egg.name, self.orm_control.schema_version_for(egg, default='0.0'))
+                migrations_for_egg = egg.compute_migrations(current_schema_version, migration_version)
+                if migrations_for_egg:
+                    migration_runs.setdefault(migration_version, []).append((egg, migrations_for_egg))
+                    egg_highest_migration_version[egg.name] = migration_version
+
+        for version_key in sorted(migration_runs.keys(), key=lambda v: parse_version(v)):
+            logging.getLogger(__name__).info('Migration run for version: %s' % (version_key))
+            for egg, migrations in migration_runs.get(version_key):
+                for migration in migrations:
+                    logging.getLogger(__name__).info('  Added migration to run: %s %s from Egg(%s)' % (migration.__name__, migration.version, egg.name))
+            migration_run = MigrationRun(version_key, self.orm_control, migration_runs.get(version_key))
+            migration_run.schedule_migrations()
+            migration_run.execute_migrations()
+
+        self.update_schema_versions_to_latest_installed_egg()
+
+    def update_schema_versions_to_latest_installed_egg(self):
+        for egg in self.eggs_in_order:
+            if self.orm_control.schema_version_for(egg, default='0.0') != egg.version:
+                logging.getLogger(__name__).info('Migrating %s - updating schema version to latest %s' % (egg.name, egg.version))
+                self.orm_control.update_schema_version_for(egg)
+
+
+class MigrationRun(object):
+    def __init__(self, version, orm_control, eggs_in_order_migrations):
+        self.version = version
         self.orm_control = orm_control
         self.changes = MigrationSchedule('drop_fk', 'drop_pk', 'pre_alter', 'alter', 
                                          'create_pk', 'indexes', 'data', 'create_fk', 'cleanup')
-        self.eggs_in_order = eggs_in_order
-
-    def migrations_to_run_for(self, egg):
-        return [migration(self.changes) 
-                for migration in egg.compute_migrations(self.orm_control.schema_version_for(egg, default='0.0'))]
+        self.eggs_in_order_migrations = eggs_in_order_migrations
 
     def schedule_migrations(self):
-        migrations_per_egg = [(egg, self.migrations_to_run_for(egg))
-                              for egg in self.eggs_in_order]
-
+        migrations_per_egg = []
+        for egg, migration_classes in self.eggs_in_order_migrations:
+            migrations_per_egg.append((egg, [migration_class(self.changes) for migration_class in migration_classes]))
         self.schedule_migration_changes(reversed(migrations_per_egg), 'upgrade')
         self.schedule_migration_changes(migrations_per_egg, 'upgrade_cleanup')
         self.schedule_migration_changes(migrations_per_egg, 'schedule_upgrades')
 
     def schedule_migration_changes(self, migrations_per_egg, method_name):
-        for egg, migration_list in migrations_per_egg:
-            current_schema_version = self.orm_control.schema_version_for(egg, default='0.0')
-            message = 'Scheduling %s %s migrations for %s - from version %s to %s' % \
-                          (len(migration_list), method_name, egg.name, 
-                           current_schema_version, egg.version)
+        for (egg, migration_list) in migrations_per_egg:
+            message = 'Scheduling %s %s migrations for %s - version %s ' % \
+                      (len(migration_list), method_name, egg.name, self.version)
+
             logging.getLogger(__name__).info(message)
             for migration in migration_list:
                 if hasattr(migration, method_name):
@@ -59,12 +96,11 @@ class MigrationRun(object):
     def execute_migrations(self):
         self.changes.execute_all()
         self.update_schema_versions()
-        
+
     def update_schema_versions(self):
-        for egg in self.eggs_in_order:
-            if self.orm_control.schema_version_for(egg, default='0.0') != egg.version:
-                logging.getLogger(__name__).info('Migrating %s - updating schema version to %s' % (egg.name, egg.version))
-                self.orm_control.update_schema_version_for(egg)
+        for (egg, migrations) in self.eggs_in_order_migrations:
+            logging.getLogger(__name__).info('Migrating %s - updating schema version to %s' % (egg.name, self.version))
+            self.orm_control.update_schema_version_for(egg, version=self.version)
 
 
 class MigrationSchedule(object):
@@ -86,7 +122,7 @@ class MigrationSchedule(object):
                 to_call(*args, **kwargs)
             except:
                 stack_size = len(stack_trace_list)
-                count  = 1
+                count = 1
                 for i in stack_trace_list:
                     logging.getLogger(__name__).error('Stack Trace for %s [%s of %s]: %s' % (to_call.__name__, count,stack_size,i))
                     count += 1

@@ -109,7 +109,6 @@ class DependencyGraph(object):
         return reversed(self.topological_order)
 
 
-
 class ReahlEgg(object):
     interface_cache = {}
 
@@ -150,9 +149,9 @@ class ReahlEgg(object):
     def migrations_in_order(self):
         return self.get_ordered_classes_exported_on('reahl.migratelist')
 
-    def compute_migrations(self, current_schema_version):
+    def compute_migrations(self, current_schema_version, migration_run_version):
         return [cls for cls in self.migrations_in_order
-                if cls.is_applicable(current_schema_version, self.version)]
+                if cls.is_applicable(current_schema_version, migration_run_version)]
 
     def get_ordered_classes_exported_on(self, entry_point):
         entry_point_dict = self.distribution.get_entry_map().get(entry_point, {})

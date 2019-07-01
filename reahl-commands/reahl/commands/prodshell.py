@@ -303,7 +303,7 @@ class MigrateDB(ProductionCommand):
     keyword = 'migratedb'
     def assemble(self):
         super(MigrateDB, self).assemble()
-        self.parser.add_argument('-d', '--dryrun', action='store_true', dest='dry_run', help='do the migration and then rollback changes')
+        self.parser.add_argument('-d', '--dryrun', action='store_true', dest='dry_run', help='apply the migration, but do not commit(rollback changes)')
 
     def execute(self, args):
         super(MigrateDB, self).execute(args)

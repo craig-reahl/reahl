@@ -18,7 +18,8 @@
 from __future__ import print_function, unicode_literals, absolute_import, division
 
 
-from sqlalchemy import Column, String, UnicodeText
+from sqlalchemy import Column, String, UnicodeText, Integer, Text, PrimaryKeyConstraint, DateTime, Boolean, \
+    ForeignKeyConstraint, UniqueConstraint, LargeBinary, BigInteger
 from alembic import op
 
 from reahl.sqlalchemysupport.elixirmigration import MigrateElixirToDeclarative
@@ -33,7 +34,7 @@ class RenameRegionToUi(Migration):
     @classmethod
     def is_applicable(cls, current_schema_version, new_version):
         if super(cls, cls).is_applicable(current_schema_version, new_version):
-            # reahl-declarative is new, and replaces reahl-elixir-impl. Therefore it thinks it is migrating from version 0 always.
+            # reahl-web-declarative is new, and replaces reahl-elixir-impl. Therefore it thinks it is migrating from version 0 always.
             # We need to manually check that it's not coming from reahl-web-elixirimpl 2.0 or 2.1 instead.
             orm_control = ExecutionContext.get_context().system_control.orm_control
 
@@ -41,7 +42,7 @@ class RenameRegionToUi(Migration):
                 name = 'reahl-web-declarative'
             previous_elixir_version = orm_control.schema_version_for(FakeElixirEgg(), default='0.0')
 
-            return previous_elixir_version != '0.0' and super(cls, cls).is_applicable(current_schema_version, previous_elixir_version)
+            return previous_elixir_version != '0.0' and super(cls, cls).is_applicable(current_schema_version, new_version)
         else:
             return False
 

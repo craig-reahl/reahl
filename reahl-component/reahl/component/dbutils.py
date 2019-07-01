@@ -25,10 +25,11 @@ from __future__ import print_function, unicode_literals, absolute_import, divisi
 import re
 from contextlib import contextmanager
 from six.moves.urllib import parse as urllib_parse
+import logging
 
 from reahl.component.exceptions import ProgrammerError
 from reahl.component.eggs import ReahlEgg
-from reahl.component.migration import MigrationRun
+from reahl.component.migration import MigrationSeries
 
 
 class CouldNotFindDatabaseControlException(Exception):
@@ -279,13 +280,16 @@ class ORMControl(object):
 
     """
     def migrate_db(self, eggs_in_order, dry_run=False):
-        with self.managed_transaction():
-            migration_run = MigrationRun(self, eggs_in_order)
-            migration_run.schedule_migrations()
-            migration_run.execute_migrations()
-            if dry_run:
-                raise Exception('Signal to rollback, only a dry run')
-
+        try:
+            with self.managed_transaction():
+                MigrationSeries(self, eggs_in_order).run()
+                if dry_run:
+                    raise Exception('Signal rollback')
+        except Exception as e:
+            if str(e) == 'Signal rollback':
+                logging.getLogger(__name__).info('Migration: only a dry run, rolling changes back')
+            else:
+                raise
 
 
 

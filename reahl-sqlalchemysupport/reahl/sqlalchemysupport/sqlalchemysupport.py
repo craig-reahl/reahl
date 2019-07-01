@@ -346,7 +346,9 @@ class SqlAlchemyControl(ORMControl):
         already_created = existing_versions.count() > 0
         assert not already_created, 'The schema for the "%s" egg has already been created previously at version %s' % \
             (egg_name, existing_versions.one().version)
-        Session.add(SchemaVersion(version=egg_version, egg_name=egg_name))
+        schema_version = SchemaVersion(version=egg_version, egg_name=egg_name)
+        Session.add(schema_version)
+        return schema_version
 
     def remove_schema_version_for(self, egg=None, egg_name=None):
         assert egg or egg_name
@@ -356,20 +358,35 @@ class SqlAlchemyControl(ORMControl):
         Session.delete(schema_version_for_egg)
 
     def schema_version_for(self, egg, default=None):
-        existing_versions = Session.query(SchemaVersion).filter_by(egg_name=egg.name)
-        number_versions_found = existing_versions.count()
+        number_versions_found = 0
+        try:
+            from sqlalchemy.engine import reflection
+            insp = reflection.Inspector.from_engine(self.engine)
+            exists = SchemaVersion.__tablename__ in insp.get_table_names()
+            if exists:
+                existing_versions = Session.query(SchemaVersion).filter_by(egg_name=egg.name)
+                number_versions_found = existing_versions.count()
+        except:
+            number_versions_found = 0
         assert number_versions_found <= 1, 'More than one existing schema version found for egg %s' % egg.name
         if number_versions_found == 1:
             return existing_versions.one().version
         else:
             assert default, 'No existing schema version found for egg %s, and you did not specify a default version' % egg.name
             return default
-            
-    def update_schema_version_for(self, egg):
+
+    def update_schema_version_for(self, egg, version=None):
         current_versions = Session.query(SchemaVersion).filter_by(egg_name=egg.name)
-        assert current_versions.count() == 1, 'Found %s versions for %s, expected exactly 1' % (current_versions.count(), egg.name)
-        current_version = current_versions.one()
-        current_version.version = egg.version
+        if current_versions.count() == 0:
+            current_version = self.initialise_schema_version_for(egg=egg)
+        else:
+            assert current_versions.count() == 1, 'Found %s versions for %s, expected exactly 1' % (current_versions.count(), egg.name)
+            current_version = current_versions.one()
+
+        from_version = current_version.version
+        to_version = version if version else egg.version
+        logging.getLogger(__name__).info('update schema version for %s - from version %s to %s' % (egg.name, from_version, to_version))
+        current_version.version = to_version
 
 
 class PersistedField(Field):
