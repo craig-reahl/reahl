@@ -419,7 +419,7 @@ class PersistedField(Field):
 class SchemaVersion(Base):
     __tablename__ = 'reahl_schema_version'
     id = Column(Integer, primary_key=True)
-    version =  Column(String(50))
+    version = Column(String(50))
     egg_name = Column(String(80))
 
 
