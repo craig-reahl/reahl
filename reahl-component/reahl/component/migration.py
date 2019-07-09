@@ -40,7 +40,7 @@ class MigrationSeries(object):
 
         migration_runs = {}
         egg_highest_migration_version = {}
-        for migration_version in versions_of_migrations:
+        for migration_version in sorted(versions_of_migrations, key=lambda v: parse_version(v)):
             for egg in self.eggs_in_order:
                 current_schema_version = egg_highest_migration_version.setdefault(egg.name, self.orm_control.schema_version_for(egg, default='0.0'))
                 migrations_for_egg = egg.compute_migrations(current_schema_version, migration_version)
@@ -100,7 +100,8 @@ class MigrationRun(object):
     def update_schema_versions(self):
         for (egg, migrations) in self.eggs_in_order_migrations:
             logging.getLogger(__name__).info('Migrating %s - updating schema version to %s' % (egg.name, self.version))
-            self.orm_control.update_schema_version_for(egg, version=self.version)
+            if not any([m._for_fake_egg for m in migrations]): # some Migrations in this egg are actually for another egg(that has been removed)
+                self.orm_control.update_schema_version_for(egg, version=self.version)
 
 
 class MigrationSchedule(object):
@@ -145,6 +146,7 @@ class Migration(object):
     """
 
     version = None
+    _for_fake_egg = False
 
     @classmethod
     def is_applicable(cls, current_schema_version, new_version):
