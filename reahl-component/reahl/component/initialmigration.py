@@ -35,18 +35,30 @@ class GenesisMigration(Migration):
         # self.schedule('indexes', op.create_index, 'reahl_schema_version_id_seq', 'reahl_schema_version', ['id'])
 
         self.schedule('alter', op.create_table, 'accountmanagementinterface',
-                      Column('id', Integer(), primary_key=True, nullable=False),
-                      Column('email', Text(), nullable=True),
-                      # PrimaryKeyConstraint('id')
-                      )
+                        Column('id', Integer(), primary_key=True, nullable=False),
+                        Column('email', Text(), nullable=True),
+                        Column('session_id', Integer(), nullable=True),
+                        ForeignKeyConstraint(['session_id'], [u'usersession.id'], ondelete=u'CASCADE'),
+                        #PrimaryKeyConstraint('id')
+                        )
         # self.schedule('indexes', op.create_index, 'accountmanagementinterface_id_seq', 'accountmanagementinterface', ['id'])
         self.schedule('indexes', op.create_index, 'ix_accountmanagementinterface_email', 'accountmanagementinterface', ['email'], unique=False)
-        self.schedule('alter', op.create_table,'deferredaction',
+        self.schedule('indexes', op.create_index, 'ix_accountmanagementinterface_session_id', 'accountmanagementinterface', ['session_id'], unique=False)
+
+        self.schedule('alter', op.create_table, 'deferredaction',
                       Column('id', Integer(), primary_key=True, nullable=False),
                       Column('deadline', DateTime(), nullable=False),
                       Column('row_type', String(length=40), nullable=True),
                       # PrimaryKeyConstraint('id')
                       )
+
+        self.schedule('alter', op.create_table, 'queue',
+                        Column('id', Integer(), primary_key=True, nullable=False),
+                        Column('name', Text(), nullable=False),
+                        #PrimaryKeyConstraint('id'),
+                        UniqueConstraint('name')
+                        )
+
         # self.schedule('indexes', op.create_index, 'deferredaction_id_seq', 'deferredaction', ['id'])
         self.schedule('alter', op.create_table, 'requirement',
                       Column('id', Integer(), primary_key=True,  nullable=False),
@@ -140,6 +152,19 @@ class GenesisMigration(Migration):
                       )
         # self.schedule('indexes', op.create_index, 'sessiondata_id_seq', 'sessiondata', ['id'])
         self.schedule('indexes', op.create_index, 'ix_sessiondata_web_session_id', 'sessiondata', ['web_session_id'], unique=False)
+
+        self.schedule('alter', op.create_table, 'task',
+                        Column('id', Integer(), primary_key=True, nullable=False),
+                        Column('queue_id', Integer(), nullable=True),
+                        Column('title', Text(), nullable=False),
+                        Column('reserved_by_id', Integer(), nullable=True),
+                        ForeignKeyConstraint(['queue_id'], ['queue.id'], ),
+                        ForeignKeyConstraint(['reserved_by_id'], ['party.id'], ),
+                        #PrimaryKeyConstraint('id')
+                        )
+        self.schedule('indexes', op.create_index, 'ix_task_queue_id', 'task', ['queue_id'], unique=False)
+        self.schedule('indexes', op.create_index, 'ix_task_reserved_by_id', 'task', ['reserved_by_id'], unique=False)
+
         self.schedule('alter', op.create_table, 'verifyemailrequest',
                       Column('verificationrequest_requirement_id', Integer(), nullable=False),
                       Column('email', Text(), nullable=False),
@@ -182,10 +207,4 @@ class GenesisMigration(Migration):
                       )
 
         self.schedule('data', op.execute, 'update persistedfile set mime_type=content_type')
-
-        1 | 2.0.0   | reahl-web-elixirimpl
-2 | 2.0.0   | reahl-sqlalchemysupport
-3 | 2.0.0   | reahl-web
-4 | 2.0.0   | reahl-mailutil
-5 | 2.0.0   | reahl-component
 
