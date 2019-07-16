@@ -319,7 +319,11 @@ class DiffDB(ProductionCommand):
         super(DiffDB, self).execute(args)
         self.context.install()
         with self.sys_control.auto_connected():
-            pprint.pprint(self.sys_control.diff_db(), indent=2, width=20)
+            migrations_required = self.sys_control.diff_db()
+            if migrations_required:
+                pprint.pprint(migrations_required, indent=2, width=20)
+            else:
+                print('No difference detected')
 
 
 class ListDependencies(ProductionCommand):
