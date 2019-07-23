@@ -31,6 +31,7 @@ from reahl.component.context import ExecutionContext
 
 class GenesisMigration(Migration):
     version = '2.0'
+    _update_egg_schema_version_after_migration = False  #reahl-web-declarative does not yet exist
 
     def schedule_upgrades(self):
 
@@ -91,21 +92,7 @@ class GenesisMigration(Migration):
 
 class RenameRegionToUi(Migration):
     version = '2.1'
-    @classmethod
-    def is_applicable(cls, current_schema_version, new_version):
-        if super(cls, cls).is_applicable(current_schema_version, new_version):
-            # reahl-web-declarative is new, and replaces reahl-web-elixirimpl. Therefore it thinks it is migrating from version 0 always.
-            # We need to manually check that it's not coming from reahl-web-elixirimpl 2.0 or 2.1 instead.
-            orm_control = ExecutionContext.get_context().system_control.orm_control
-
-            class FakeElixirEgg(object):
-                name = 'reahl-web-elixirimpl'
-            cls._for_fake_egg = True
-            previous_elixir_version = orm_control.schema_version_for(FakeElixirEgg(), default='0.0')
-
-            return previous_elixir_version != '0.0' and super(cls, cls).is_applicable(previous_elixir_version, new_version)
-        else:
-            return False
+    _update_egg_schema_version_after_migration = False  # reahl-web-declarative does not yet exist
 
     def schedule_upgrades(self):
         self.schedule('alter', op.alter_column, 'sessiondata', 'region_name', new_column_name='ui_name')

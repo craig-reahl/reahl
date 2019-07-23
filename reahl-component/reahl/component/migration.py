@@ -106,12 +106,12 @@ class MigrationRun(object):
 
     def execute_migrations(self):
         self.changes.execute_all()
-        #self.update_schema_versions()
+        self.update_schema_versions()
 
     def update_schema_versions(self):
         for (egg, migrations) in self.eggs_in_order_migrations:
             logging.getLogger(__name__).info('Migrating %s - updating schema version to %s' % (egg.name, self.version))
-            if not any([m._for_fake_egg for m in migrations]): # some Migrations in this egg are actually for another egg(that has been removed)
+            if any([m._update_egg_schema_version_after_migration for m in migrations]):
                 self.orm_control.update_schema_version_for(egg, version=self.version)
 
 
@@ -157,7 +157,7 @@ class Migration(object):
     """
 
     version = None
-    _for_fake_egg = False
+    _update_egg_schema_version_after_migration = True
 
     @classmethod
     def is_applicable(cls, current_schema_version, new_version):
