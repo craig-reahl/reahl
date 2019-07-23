@@ -92,8 +92,9 @@ class GenesisMigration(Migration):
                       Column('id', Integer(), nullable=False),
                       Column('name', Text(), nullable=False),
                       PrimaryKeyConstraint('id', name='queue_pkey'),
-                      UniqueConstraint('name')
+                      #UniqueConstraint('name')
                       )
+        self.schedule('indexes', op.create_index, 'ix_queue_name', 'queue', ['name'], unique=True)
 
         self.schedule('alter', op.create_table, 'activateaccount',
                       Column('deferredaction_id', Integer(), nullable=False),
@@ -127,8 +128,9 @@ class GenesisMigration(Migration):
                                            name='emailandpasswordsystemaccount_systemaccount_id_fkey',
                                            ondelete='CASCADE'),
                       PrimaryKeyConstraint('systemaccount_id', name='emailandpasswordsystemaccount_pkey'),
-                      UniqueConstraint('email')
+                      #UniqueConstraint('email')
                       )
+        self.schedule('indexes', op.create_index, 'ix_emailandpasswordsystemaccount_email', 'emailandpasswordsystemaccount', ['email'], unique=True)
 
         self.schedule('alter', op.create_table, 'party',
                       Column('id', Integer(), nullable=False),
@@ -184,8 +186,10 @@ class GenesisMigration(Migration):
                                            name='verifyemailrequest_verificationrequest_requirement_id_fkey',
                                            ondelete='CASCADE'),
                       PrimaryKeyConstraint('verificationrequest_requirement_id', name='verifyemailrequest_pkey'),
-                      UniqueConstraint('email')
+                      #UniqueConstraint('email', name='ix_verifyemailrequest_email')
                       )
+        self.schedule('indexes', op.create_index, 'ix_verifyemailrequest_email', 'verifyemailrequest', ['email'], unique=True)
+
 
 
 
@@ -306,7 +310,7 @@ class AddLoginSession(Migration):
         self.schedule('alter', op.create_table, 'loginsession', 
                       Column('id', Integer(), primary_key=True, nullable=False),
                       Column('row_type', String(length=40)),
-                      Column('account_id', Integer(), ForeignKey('systemaccount.id')), 
+                      Column('account_id', Integer(), ForeignKey('systemaccount.id')),
                       Column('user_session_id', Integer(), ForeignKey('usersession.id')))
         self.schedule('indexes', op.create_index, ix_name('loginsession', 'account_id'), 'loginsession', ['account_id'])
         self.schedule('indexes', op.create_index, ix_name('loginsession', 'user_session_id'), 'loginsession', ['user_session_id'])
