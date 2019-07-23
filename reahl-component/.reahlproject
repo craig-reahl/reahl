@@ -37,9 +37,6 @@
 
   <export entrypoint="reahl.component.databasecontrols" name="NullDatabaseControl" locator="reahl.component.dbutils:NullDatabaseControl"/>
 
-  <migrations>
-    <class locator="reahl.component.initialmigration:GenesisMigration"/>
-  </migrations>
 
   <distpackage type="wheel">
     <packageindex repository="pypi"/>

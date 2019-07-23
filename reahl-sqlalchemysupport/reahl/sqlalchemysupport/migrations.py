@@ -20,7 +20,20 @@ from alembic import op
 
 from reahl.component.migration import Migration
 
-from sqlalchemy import UnicodeText, Unicode
+from sqlalchemy import UnicodeText, Unicode, Column, Integer, String, PrimaryKeyConstraint
+
+
+class GenesisMigration(Migration):
+    version = '2.0'
+
+    def schedule_upgrades(self):
+        self.schedule('alter', op.create_table, 'reahl_schema_version',
+                      Column('id', Integer(), nullable=False),
+                      Column('version', String(length=50), nullable=True),
+                      Column('egg_name', String(), nullable=True),
+                      PrimaryKeyConstraint('id', name='reahl_schema_version_pkey')
+                      )
+        # self.schedule('indexes', op.create_index, 'reahl_schema_version_id_seq', 'reahl_schema_version', ['id'])
 
 
 class ChangesToBeMySqlCompatible(Migration):

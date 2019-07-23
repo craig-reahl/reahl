@@ -353,7 +353,6 @@ class SqlAlchemyControl(ORMControl):
             return migrations_required
         print('No difference detected')
 
-
     def initialise_schema_version_for(self, egg=None, egg_name=None, egg_version=None):
         assert egg or (egg_name and egg_version)
         if egg:
@@ -371,8 +370,9 @@ class SqlAlchemyControl(ORMControl):
         assert egg or egg_name
         if egg:
             egg_name = egg.name
-        schema_version_for_egg = Session.query(SchemaVersion).filter_by(egg_name=egg_name).one()
-        Session.delete(schema_version_for_egg)
+        schema_version_entries_for_egg = Session.query(SchemaVersion).filter_by(egg_name=egg_name)
+        if schema_version_entries_for_egg.count == 1:
+            Session.delete(schema_version_entries_for_egg.one())
 
     def schema_version_for(self, egg, default=None):
         number_versions_found = 0

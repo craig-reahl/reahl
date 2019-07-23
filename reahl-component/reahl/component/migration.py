@@ -106,7 +106,7 @@ class MigrationRun(object):
 
     def execute_migrations(self):
         self.changes.execute_all()
-        self.update_schema_versions()
+        #self.update_schema_versions()
 
     def update_schema_versions(self):
         for (egg, migrations) in self.eggs_in_order_migrations:
