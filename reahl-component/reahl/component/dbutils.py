@@ -158,10 +158,10 @@ class SystemControl(object):
         finally:
             self.disconnect()
 
-    def migrate_db(self, dry_run=False, output_sql=False):
+    def migrate_db(self, dry_run=False, output_sql=False, max_migration_version=None):
         """Runs the database migrations relevant to the current system."""
         eggs_in_order = ReahlEgg.get_all_relevant_interfaces(self.config.reahlsystem.root_egg)
-        self.orm_control.migrate_db(eggs_in_order, dry_run=dry_run, output_sql=output_sql)
+        self.orm_control.migrate_db(eggs_in_order, dry_run=dry_run, output_sql=output_sql, max_migration_version=max_migration_version)
         return 0
 
     def diff_db(self, output_sql=False):
@@ -279,10 +279,10 @@ class ORMControl(object):
     appropriate.
 
     """
-    def migrate_db(self, eggs_in_order, dry_run=False, output_sql=False):
+    def migrate_db(self, eggs_in_order, dry_run=False, output_sql=False, max_migration_version=None):
         try:
             with self.managed_transaction():
-                MigrationSeries(self, eggs_in_order).run()
+                MigrationSeries(self, eggs_in_order, max_migration_version=max_migration_version).run()
                 if dry_run:
                     raise Exception('Signal rollback')
         except Exception as e:

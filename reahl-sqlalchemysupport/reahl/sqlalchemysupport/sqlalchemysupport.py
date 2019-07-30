@@ -330,11 +330,11 @@ class SqlAlchemyControl(ORMControl):
     def execute_one(self, sql):
         return Session.execute(sql).fetchone()
 
-    def migrate_db(self, eggs_in_order, dry_run=False, output_sql=False):
+    def migrate_db(self, eggs_in_order, dry_run=False, output_sql=False, max_migration_version=None):
         opts = {'as_sql': output_sql, 'target_metadata': metadata}
         with Operations.context(MigrationContext.configure(connection=Session.connection(), opts=opts)) as op:
             self.op = op
-            return super(SqlAlchemyControl, self).migrate_db(eggs_in_order, dry_run=dry_run, output_sql=output_sql)
+            return super(SqlAlchemyControl, self).migrate_db(eggs_in_order, dry_run=dry_run, output_sql=output_sql, max_migration_version=max_migration_version)
 
     def diff_db(self, output_sql=False):
         if output_sql:

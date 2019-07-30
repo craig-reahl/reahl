@@ -305,12 +305,15 @@ class MigrateDB(ProductionCommand):
                                  help='apply the migration, but do not commit(rollback changes)')
         self.parser.add_argument('-s', '--dryrunsql', action='store_true', dest='dry_run_sql',
                                  help='dry run the migration, showing sql')
+        self.parser.add_argument('-m', '--maxmigrationversion', action='store', dest='max_migration_version',
+                                 help='run migrations up to(inclusive) this version')
 
     def execute(self, args):
         super(MigrateDB, self).execute(args)
         self.context.install()
         with self.sys_control.auto_connected():
-            return self.sys_control.migrate_db(dry_run=args.dry_run or args.dry_run_sql, output_sql=args.dry_run_sql)
+            return self.sys_control.migrate_db(dry_run=args.dry_run or args.dry_run_sql, output_sql=args.dry_run_sql,
+                                               max_migration_version=args.max_migration_version)
 
 
 class DiffDB(ProductionCommand):

@@ -26,9 +26,10 @@ from reahl.component.exceptions import ProgrammerError
 
 
 class MigrationSeries(object):
-    def __init__(self, orm_control, eggs_in_order):
+    def __init__(self, orm_control, eggs_in_order, max_migration_version=None):
         self.orm_control = orm_control
         self.eggs_in_order = eggs_in_order
+        self.max_migration_version = parse_version(max_migration_version) if max_migration_version else None
 
     def run(self):
 
@@ -60,11 +61,11 @@ class MigrationSeries(object):
         return migration_runs
 
     def collect_versions_of_migrations(self):
-        versions_of_migrations = []
+        versions_of_migrations = set([])
         for migration_list in [egg.migrations_in_order for egg in self.eggs_in_order]:
             for migration in migration_list:
-                if migration.version not in versions_of_migrations:
-                    versions_of_migrations.append(migration.version)
+                if self.max_migration_version and parse_version(migration.version) <= self.max_migration_version:
+                    versions_of_migrations.add(migration.version)
         return versions_of_migrations
 
     def update_schema_versions_to_latest_installed_eggs(self):
