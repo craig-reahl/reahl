@@ -41,7 +41,12 @@ class MigrationSeries(object):
             migration_run.schedule_migrations()
             migration_run.execute_migrations()
 
-        updated_versions = self.update_schema_versions_to_latest_installed_eggs()
+            for egg in self.eggs_in_order:
+                self.orm_control.update_schema_version_for(egg, version=version_key)
+
+        updated_versions = False
+        if not self.max_migration_version:
+            updated_versions = self.update_schema_versions_to_latest_installed_eggs()
 
         if not migration_runs and not updated_versions:
             logging.getLogger(__name__).info('No migrations to run')
@@ -64,7 +69,7 @@ class MigrationSeries(object):
         versions_of_migrations = set([])
         for migration_list in [egg.migrations_in_order for egg in self.eggs_in_order]:
             for migration in migration_list:
-                if self.max_migration_version and parse_version(migration.version) <= self.max_migration_version:
+                if not self.max_migration_version or (parse_version(migration.version) <= self.max_migration_version):
                     versions_of_migrations.add(migration.version)
         return versions_of_migrations
 

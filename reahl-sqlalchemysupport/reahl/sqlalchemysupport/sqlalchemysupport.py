@@ -374,11 +374,12 @@ class SqlAlchemyControl(ORMControl):
             egg_name = egg.name
             egg_version = egg.version
         existing_versions = Session.query(SchemaVersion).filter_by(egg_name=egg_name)
-        already_created = existing_versions.count() > 0
-        assert not already_created, 'The schema for the "%s" egg has already been created previously at version %s' % \
-            (egg_name, existing_versions.one().version)
-        schema_version = SchemaVersion(version=egg_version, egg_name=egg_name)
-        Session.add(schema_version)
+        already_created = existing_versions.count() == 1
+        if already_created:
+            schema_version = existing_versions.one() #perhaps call update_schema_version_for
+        else:
+            schema_version = SchemaVersion(version=egg_version, egg_name=egg_name)
+            Session.add(schema_version)
         return schema_version
 
     def remove_schema_version_for(self, egg=None, egg_name=None):
