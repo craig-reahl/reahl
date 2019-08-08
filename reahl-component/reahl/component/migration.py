@@ -22,65 +22,71 @@ import logging
 import warnings
 import inspect
 
+from collections import OrderedDict
 from reahl.component.exceptions import ProgrammerError
 
 
 class MigrationSeries(object):
-    def __init__(self, orm_control, eggs_in_order, max_migration_version=None):
-        self.orm_control = orm_control
+    def __init__(self, orm_control, eggs_in_order, migration_runs, update_all_versions=False):
         self.eggs_in_order = eggs_in_order
-        self.max_migration_version = parse_version(max_migration_version) if max_migration_version else None
+        self.orm_control = orm_control
+        self.migration_runs = migration_runs
+        self.update_all_versions = update_all_versions
 
-    def run(self):
+    @classmethod
+    def from_eggs(cls, orm_control, eggs_in_order, max_migration_version=None):
+        migration_runs = cls.collect_migration_runs_in_order(orm_control, eggs_in_order, 
+                                                             parse_version(max_migration_version) if max_migration_version else None)
+        return MigrationSeries(orm_control, eggs_in_order, migration_runs, update_all_versions=max_migration_version is not None)
 
-        migration_runs = self.migration_runs_in_order()
-
-        for version_key in migration_runs.keys():
-            logging.getLogger(__name__).info('Migration run for version: %s' % version_key)
-            migration_run = MigrationRun(version_key, self.orm_control, migration_runs.get(version_key))
-            migration_run.schedule_migrations()
-            migration_run.execute_migrations()
-
-            for egg in self.eggs_in_order:
-                self.orm_control.update_schema_version_for(egg, version=version_key)
-
-        updated_versions = False
-        if not self.max_migration_version:
-            updated_versions = self.update_schema_versions_to_latest_installed_eggs()
-
-        if not migration_runs and not updated_versions:
-            logging.getLogger(__name__).info('No migrations to run')
-
-    def migration_runs_in_order(self):
-        migration_runs = {}
+    @classmethod
+    def collect_migration_runs_in_order(cls, orm_control, eggs_in_order, max_migration_version):
+        migrations_per_version = OrderedDict()
         egg_highest_migration_version = {}
-        for migration_version in sorted(self.collect_versions_of_migrations(), key=lambda v: parse_version(v)):
-            for egg in self.eggs_in_order:
+        for migration_version in sorted(cls.collect_versions_of_migrations(eggs_in_order, max_migration_version), key=lambda v: parse_version(v)):
+            for egg in eggs_in_order:
                 current_schema_version = \
                     egg_highest_migration_version.setdefault(egg.name,
-                                                             self.orm_control.schema_version_for(egg, default='0.0'))
+                                                             orm_control.schema_version_for(egg, default='0.0'))
                 migrations_for_egg = egg.compute_migrations(current_schema_version, migration_version)
-                if migrations_for_egg:
-                    migration_runs.setdefault(migration_version, []).append((egg, migrations_for_egg))
-                    egg_highest_migration_version[egg.name] = migration_version
-        return migration_runs
+                if not migrations_for_egg:
+                    class NopMigration(Migration):
+                        version = migration_version
+                        def schedule_upgrades(self): pass
 
-    def collect_versions_of_migrations(self):
-        versions_of_migrations = set([])
-        for migration_list in [egg.migrations_in_order for egg in self.eggs_in_order]:
+                    migrations_for_egg = [NopMigration]
+                migrations_per_version.setdefault(migration_version, []).append((egg, migrations_for_egg))
+                egg_highest_migration_version[egg.name] = migration_version
+
+        return [MigrationRun(version_key, orm_control, migrations_for_version) 
+                for version_key, migrations_for_version in migrations_per_version.items()]
+
+    @classmethod
+    def collect_versions_of_migrations(self, eggs_in_order, max_migration_version):
+        versions_of_migrations = set([])  
+        for migration_list in [egg.migrations_in_order for egg in eggs_in_order]:
             for migration in migration_list:
-                if not self.max_migration_version or (parse_version(migration.version) <= self.max_migration_version):
+                if not max_migration_version or (parse_version(migration.version) <= max_migration_version):
                     versions_of_migrations.add(migration.version)
         return versions_of_migrations
 
+    def run(self):
+        for migration_run in self.migration_runs:
+            logging.getLogger(__name__).info('Migration run for version: %s' % migration_run.version)
+            migration_run.schedule_migrations()
+            migration_run.execute_migrations()
+
+        if not self.migration_runs:
+            logging.getLogger(__name__).info('No migrations to run')
+    
+        if self.update_all_versions:
+            self.update_schema_versions_to_latest_installed_eggs()
+
     def update_schema_versions_to_latest_installed_eggs(self):
-        updated = False
         for egg in self.eggs_in_order:
             if self.orm_control.schema_version_for(egg, default='0.0') != egg.version:
                 logging.getLogger(__name__).info('Migrating %s - updating schema version to latest %s' % (egg.name, egg.version))
                 self.orm_control.update_schema_version_for(egg)
-                updated = True
-        return updated
 
 
 class MigrationRun(object):

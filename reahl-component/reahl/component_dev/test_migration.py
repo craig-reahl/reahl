@@ -275,3 +275,7 @@ def test_schema_version_housekeeping(migrate_fixture):
     migration_run = MigrationRun(migrate_fixture.orm_control, [egg])
     migration_run.execute_migrations()
     assert migrate_fixture.orm_control.schema_version_for(egg) == '2.0'
+
+
+# that the new version number of all installed eggs are updated even if they do not have migrations for the last version
+# that all migrations of all eggs for each version are run before all migrations of the next version

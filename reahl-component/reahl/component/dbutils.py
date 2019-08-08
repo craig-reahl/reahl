@@ -263,6 +263,10 @@ class NullDatabaseControl(DatabaseControl):
         return self.donothing
 
 
+class DryRunException(Exception):
+    pass
+
+
 class ORMControl(object):
     """An interface to higher-level database operations that may be dependent on the ORM technology used.
 
@@ -282,14 +286,11 @@ class ORMControl(object):
     def migrate_db(self, eggs_in_order, dry_run=False, output_sql=False, max_migration_version=None):
         try:
             with self.managed_transaction():
-                MigrationSeries(self, eggs_in_order, max_migration_version=max_migration_version).run()
+                MigrationSeries.from_eggs(self, eggs_in_order, max_migration_version=max_migration_version).run()
                 if dry_run:
-                    raise Exception('Signal rollback')
-        except Exception as e:
-            if str(e) == 'Signal rollback':
-                logging.getLogger(__name__).info('Migration: only a dry run, rolling changes back')
-            else:
-                raise
+                    raise DryRunException()
+        except DryRunException:
+            logging.getLogger(__name__).info('Migration: only a dry run, rolling changes back')
 
 
 
