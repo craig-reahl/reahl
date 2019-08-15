@@ -411,15 +411,16 @@ class SqlAlchemyControl(ORMControl):
     def update_schema_version_for(self, egg, version=None):
         current_versions = Session.query(SchemaVersion).filter_by(egg_name=egg.name)
         if current_versions.count() == 0:
-            current_version = self.initialise_schema_version_for(egg=egg)
+            current_version = self.initialise_schema_version_for(egg_name=egg.name, egg_version=version)
         else:
             assert current_versions.count() == 1, 'Found %s versions for %s, expected exactly 1' % (current_versions.count(), egg.name)
             current_version = current_versions.one()
 
         from_version = current_version.version
         to_version = version if version else egg.version
-        logging.getLogger(__name__).info('update schema version for %s - from version %s to %s' % (egg.name, from_version, to_version))
-        current_version.version = to_version
+        if from_version != to_version:
+            logging.getLogger(__name__).info('update schema version for %s - from version %s to %s' % (egg.name, from_version, to_version))
+            current_version.version = to_version
 
 
 class PersistedField(Field):
