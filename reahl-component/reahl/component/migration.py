@@ -21,6 +21,7 @@ from pkg_resources import parse_version
 import logging
 import warnings
 import inspect
+import traceback
 
 from collections import OrderedDict
 from reahl.component.exceptions import ProgrammerError
@@ -35,30 +36,37 @@ class MigrationSeries(object):
 
     @classmethod
     def from_eggs(cls, orm_control, eggs_in_order, max_migration_version=None):
-        migration_runs = cls.collect_migration_runs_in_order(orm_control, eggs_in_order, 
+        migration_runs = cls.collect_migration_runs_in_order(orm_control, eggs_in_order,
                                                              parse_version(max_migration_version) if max_migration_version else None)
-        return MigrationSeries(orm_control, eggs_in_order, migration_runs, update_all_versions=max_migration_version is not None)
+        return MigrationSeries(orm_control, eggs_in_order, migration_runs, update_all_versions=max_migration_version is None)
 
     @classmethod
     def collect_migration_runs_in_order(cls, orm_control, eggs_in_order, max_migration_version):
         migrations_per_version = OrderedDict()
-        egg_highest_migration_version = {}
+        previous_migration_version = '0.0'
         for migration_version in sorted(cls.collect_versions_of_migrations(eggs_in_order, max_migration_version), key=lambda v: parse_version(v)):
             for egg in eggs_in_order:
-                current_schema_version = \
-                    egg_highest_migration_version.setdefault(egg.name,
-                                                             orm_control.schema_version_for(egg, default='0.0'))
+                current_schema_version = orm_control.schema_version_for(egg, default='0.0')
+                #if len(migrations_per_version.keys())>0 and parse_version(list(migrations_per_version.keys())[-1]) > parse_version(current_schema_version):
+                #    current_schema_version = list(migrations_per_version.keys())[-1]
+                if parse_version(previous_migration_version) > parse_version(current_schema_version):
+                    current_schema_version = previous_migration_version
                 migrations_for_egg = egg.compute_migrations(current_schema_version, migration_version)
+                migrations_in_error = [i for i in migrations_for_egg if i.version != migration_version]
+                assert not migrations_in_error, 'Current version %s, unwanted migrations %s' % (migration_version, [(i, i.version) for i in migrations_in_error])
+
                 if not migrations_for_egg:
                     class NopMigration(Migration):
+                        _is_nop = True
                         version = migration_version
                         def schedule_upgrades(self): pass
 
                     migrations_for_egg = [NopMigration]
-                migrations_per_version.setdefault(migration_version, []).append((egg, migrations_for_egg))
-                egg_highest_migration_version[egg.name] = migration_version
 
-        return [MigrationRun(version_key, orm_control, migrations_for_version) 
+                migrations_per_version.setdefault(migration_version, []).append((egg, migrations_for_egg))
+            previous_migration_version = migration_version
+
+        return [MigrationRun(version_key, orm_control, migrations_for_version)
                 for version_key, migrations_for_version in migrations_per_version.items()]
 
     @classmethod
@@ -76,17 +84,24 @@ class MigrationSeries(object):
             migration_run.schedule_migrations()
             migration_run.execute_migrations()
 
-        if not self.migration_runs:
+        if not self.migration_runs or self.is_all_migrations_are_nops():
             logging.getLogger(__name__).info('No migrations to run')
-    
+
         if self.update_all_versions:
             self.update_schema_versions_to_latest_installed_eggs()
 
     def update_schema_versions_to_latest_installed_eggs(self):
         for egg in self.eggs_in_order:
-            if self.orm_control.schema_version_for(egg, default='0.0') != egg.version:
-                logging.getLogger(__name__).info('Migrating %s - updating schema version to latest %s' % (egg.name, egg.version))
-                self.orm_control.update_schema_version_for(egg)
+            logging.getLogger(__name__).info('Migrating %s - updating schema version to latest %s' % (egg.name, egg.version))
+            self.orm_control.update_schema_version_for(egg)
+
+    def is_all_migrations_are_nops(self):
+        migrations = []
+        for migration_run in self.migration_runs:
+            for egg, migration_classes in migration_run.eggs_in_order_migrations:
+                for migration_class in migration_classes:
+                    migrations.append(migration_class)
+        return all([migration_class._is_nop for migration_class in migrations])
 
 
 class MigrationRun(object):
@@ -122,8 +137,9 @@ class MigrationRun(object):
 
     def update_schema_versions(self):
         for (egg, migrations) in self.eggs_in_order_migrations:
-            logging.getLogger(__name__).info('Migrating %s - updating schema version to %s' % (egg.name, self.version))
-            if any([m._update_egg_schema_version_after_migration for m in migrations]):
+            current_schema_version = self.orm_control.schema_version_for(egg, default='0.0')
+            if parse_version(self.version) > parse_version(current_schema_version):
+                logging.getLogger(__name__).info('Migrating %s - updating schema version to %s' % (egg.name, self.version))
                 self.orm_control.update_schema_version_for(egg, version=self.version)
 
 
@@ -132,25 +148,29 @@ class MigrationSchedule(object):
         self.phases_in_order = phases
         self.phases = dict([(i, []) for i in phases])
 
-    def schedule(self, phase, stack_trace_list, to_call, *args, **kwargs):
+    def schedule(self, phase, scheduling_context, to_call, *args, **kwargs):
         try:
-            self.phases[phase].append((to_call, stack_trace_list, args, kwargs))
+            self.phases[phase].append((to_call, scheduling_context, args, kwargs))
         except KeyError as e:
             raise ProgrammerError('A phase with name<%s> does not exist.' % phase)
 
     def execute(self, phase):
         logging.getLogger(__name__).info('Executing schema change phase %s' % phase)
-        for to_call, stack_trace_list, args, kwargs in self.phases[phase]:
+        for to_call, scheduling_context, args, kwargs in self.phases[phase]:
             logging.getLogger(__name__).debug(' change: %s(%s, %s)' % (to_call.__name__, args, kwargs))
             try:
                 to_call(*args, **kwargs)
-            except:
-                stack_size = len(stack_trace_list)
-                count = 1
-                for i in stack_trace_list:
-                    logging.getLogger(__name__).error('Stack Trace for %s [%s of %s]: %s' % (to_call.__name__, count,stack_size,i))
-                    count += 1
-                raise
+            except Exception as e:
+                class ExceptionDuringMigration(Exception):
+                    def __init__(self, scheduling_context):
+                        super(ExceptionDuringMigration, self).__init__()
+                        self.scheduling_context = scheduling_context
+                    def __str__(self):
+                        message = super(ExceptionDuringMigration, self).__str__()
+                        formatted_context = traceback.format_list([(frame_info.filename, frame_info.lineno, frame_info.function, frame_info.code_context[frame_info.index]) 
+                                                                   for frame_info in self.scheduling_context])
+                        return '%s\n\n%s\n\n%s' % (message, 'The above Exception happened for the migration that was scheduled here:', ''.join(formatted_context))
+                raise ExceptionDuringMigration(scheduling_context)
 
     def execute_all(self):
         for phase in self.phases_in_order:
@@ -167,9 +187,8 @@ class Migration(object):
        Never use code imported from your component in a Migration, since Migration code is kept around in
        future versions of a component and may be run to migrate a schema with different versions of the code in your component.
     """
-
+    _is_nop = False
     version = None
-    _update_egg_schema_version_after_migration = True
 
     @classmethod
     def is_applicable(cls, current_schema_version, new_version):
@@ -195,15 +214,18 @@ class Migration(object):
            :param args: The positional arguments to be passed in the call.
            :param kwargs: The keyword arguments to be passed in the call.
         """
-        def get_stack_trace():
-            import inspect
-            stack_trace = []
+        def get_scheduling_context():
+            relevant_frames = []
+            found_framework_code = False
+            frames = iter(inspect.stack()[2:]) #remove this function from the stack
+            while not found_framework_code:
+                frame = next(frames)
+                found_framework_code = frame.filename.endswith(__file__)
+                if not found_framework_code:
+                    relevant_frames.append(frame)
 
-            for stack_item in inspect.stack()[1:]:
-                caller = inspect.getframeinfo(stack_item[0])
-                stack_trace.append("%s:%d" % (caller.filename, caller.lineno))
-            return stack_trace[::-1] #reversed
-        self.changes.schedule(phase, get_stack_trace(), to_call, *args, **kwargs)
+            return reversed(relevant_frames)
+        self.changes.schedule(phase, get_scheduling_context(), to_call, *args, **kwargs)
 
     def schedule_upgrades(self):
         """Override this method in a subclass in order to supply custom logic for changing the database schema. This
