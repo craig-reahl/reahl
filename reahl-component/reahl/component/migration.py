@@ -43,14 +43,12 @@ class MigrationSeries(object):
     @classmethod
     def collect_migration_runs_in_order(cls, orm_control, eggs_in_order, max_migration_version):
         migrations_per_version = OrderedDict()
-        previous_migration_version = '0.0'
+        previous_migration_run_version = '0.0'
         for migration_version in sorted(cls.collect_versions_of_migrations(eggs_in_order, max_migration_version), key=lambda v: parse_version(v)):
             for egg in eggs_in_order:
                 current_schema_version = orm_control.schema_version_for(egg, default='0.0')
-                #if len(migrations_per_version.keys())>0 and parse_version(list(migrations_per_version.keys())[-1]) > parse_version(current_schema_version):
-                #    current_schema_version = list(migrations_per_version.keys())[-1]
-                if parse_version(previous_migration_version) > parse_version(current_schema_version):
-                    current_schema_version = previous_migration_version
+                if parse_version(previous_migration_run_version) > parse_version(current_schema_version):
+                    current_schema_version = previous_migration_run_version
                 migrations_for_egg = egg.compute_migrations(current_schema_version, migration_version)
                 migrations_in_error = [i for i in migrations_for_egg if i.version != migration_version]
                 assert not migrations_in_error, 'Current version %s, unwanted migrations %s' % (migration_version, [(i, i.version) for i in migrations_in_error])
@@ -64,7 +62,7 @@ class MigrationSeries(object):
                     migrations_for_egg = [NopMigration]
 
                 migrations_per_version.setdefault(migration_version, []).append((egg, migrations_for_egg))
-            previous_migration_version = migration_version
+            previous_migration_run_version = migration_version
 
         return [MigrationRun(version_key, orm_control, migrations_for_version)
                 for version_key, migrations_for_version in migrations_per_version.items()]
