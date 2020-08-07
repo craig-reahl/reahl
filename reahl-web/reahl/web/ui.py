@@ -1092,6 +1092,8 @@ class Form(HTMLElement):
         #
         # If the digest does not have a value, its not ajax, so we update (as opposed to maintain the POSTed value)
         # If there is an exception we know that we're in case (2), so we update (as opposed to maintain the POSTed value)
+        raise Exception('This next line should be uncommented and tests run to show there is no coverage that catches the omission of the exception in the if clause. See test named: test_concurrency_corner_case_after_validation_exception_with_ajax')
+        #if (not self.database_digest_input.value):
         if self.exception or (not self.database_digest_input.value):
             # (b)
             self.database_digest_input.add_attribute_source(DelayedConcurrencyDigestValue(self.database_digest_input))

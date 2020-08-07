@@ -400,3 +400,81 @@ def test_optimistic_concurrency_with_ajax(web_fixture, sql_alchemy_fixture, conc
         browser.click(XPath.button_labelled('Submit'))
         assert fixture.is_concurrency_error_displayed()
 
+
+@with_fixtures(WebFixture, SqlAlchemyFixture, OptimisticConcurrencyFixture)
+def test_concurrency_corner_case_after_validation_exception_with_ajax(web_fixture, sql_alchemy_fixture, concurrency_fixture):
+    """Changing two possibly independently refreshing sections after a validation exception was raised in one of them,
+    no exception should be raised upon submitting the form afterwards once the error was fixed by the user.
+    """
+    fixture = concurrency_fixture
+
+
+    class ModelObject(Base):
+        __tablename__ = 'test_optimistic_concurrency_model_object2'
+        id = Column(Integer, primary_key=True)
+        some_field = Column(UnicodeText)
+
+        @exposed
+        def fields(self, fields):
+            fields.some_field = Field(label='Some field', default='not set')
+            fields.some_field_with_validation = Field(label='Some field with validation', default='not set').with_validation_constraint(PatternConstraint('((?!invalidinput).)*'))
+
+        @exposed
+        def events(self, events):
+            events.submit = Event(label='Submit')
+            events.submit_break = Event(label='Submit break', action=Action(self.always_break))
+
+        def always_break(self):
+            raise DomainException('boo')
+
+    class MyForm(Form):
+        def __init__(self, view):
+            super().__init__(view, 'myform')
+            self.use_layout(FormLayout())
+            self.set_attribute('novalidate', 'novalidate')
+
+            self.refreshing_div1 = self.add_child(Div(view, css_id='inner_div1'))
+            self.refreshing_div1.enable_refresh()
+            self.layout.add_input(TextInput(self, model_object.fields.some_field, refresh_widget=self.refreshing_div1))
+
+            self.refreshing_div2 = self.add_child(Div(view, css_id='inner_div2'))
+            self.refreshing_div2.enable_refresh()
+            self.layout.add_input(TextInput(self, model_object.fields.some_field_with_validation, refresh_widget=self.refreshing_div2))
+
+            self.define_event_handler(model_object.events.submit)
+            submit_button = self.add_child(ButtonInput(self, model_object.events.submit))
+            submit_button.set_attribute('formnovalidate', 'formnovalidate') # TODO: the form's novalidate already does not, but somehow the browser still
+                                                                            #   validates the input and disables the button. May be because the browser
+                                                                            #   has cached javascript against our expectations because of a previous run?
+                                                                            # We need to clear the browser's cached files before each test.
+            self.define_event_handler(model_object.events.submit_break)
+            self.add_child(ButtonInput(self, model_object.events.submit_break))
+
+    with sql_alchemy_fixture.persistent_test_classes(ModelObject):
+        model_object = ModelObject()
+        Session.add(model_object)
+
+        model_object.some_field = 'some value'
+        model_object.some_field_with_validation = 'some value'
+
+        wsgi_app = web_fixture.new_wsgi_app(child_factory=MyForm.factory(), enable_js=True)
+        web_fixture.reahl_server.set_app(wsgi_app)
+        browser = web_fixture.driver_browser
+        browser.open('/')
+
+        # Trigger refreshing to cause validation/domain exception and create construction_client_side_state which may influence subsequent refreshings
+        #browser.type(XPath.input_labelled('Some field'), 'something for the fun of it')
+        browser.type(XPath.input_labelled('Some field with validation'), 'invalidinput')
+        browser.click(XPath.button_labelled('Submit'))
+
+        #check error is displayed for validation
+        validation_alert = XPath.div().including_class('alert').with_text('Some field with validation is invalid')
+        browser.is_element_present(validation_alert)
+        assert not fixture.is_concurrency_error_displayed()
+
+        #affect two changes for different refreshing parts
+        browser.type(XPath.input_labelled('Some field'), 'something else')
+        browser.type(XPath.input_labelled('Some field with validation'), 'a valid value')
+        browser.click(XPath.button_labelled('Submit'))
+        assert not browser.is_element_present(validation_alert)
+        assert not fixture.is_concurrency_error_displayed()

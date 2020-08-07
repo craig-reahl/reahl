@@ -87,3 +87,70 @@ def test_example(web_fixture, responsive_example_fixture):
     browser.click(XPath.button_labelled('Submit'))
     browser.wait_for_element_not_visible(fixture.domain_exception_alert)  
 
+
+class ResponsiveExampleFixtureXXX(ResponsiveExampleFixture):
+    def amount_input_for(self, fund_name):
+        return XPath.input().inside_of(self.amount_cell_for(fund_name))
+    def amount_cell_for(self, fund_name):
+        return XPath.table_cell_aligned_to('Amount', 'Fund', fund_name)
+    def new_concurrency_exception_alert(self):
+        return XPath.li().with_text('Some data changed since you opened this page, please reset input to try again.')
+
+@with_fixtures(WebFixture, ResponsiveExampleFixtureXXX)
+def test_example2(web_fixture, responsive_example_fixture):
+    fixture = responsive_example_fixture
+
+    wsgi_application = web_fixture.new_wsgi_app(site_root=ResponsiveUI, enable_js=True)
+    web_fixture.reahl_server.set_app(wsgi_application)
+
+    browser = fixture.browser
+
+    browser.open('/')
+
+    # Reveal sections for new investors
+    assert not browser.is_visible(fixture.investor_information)
+    browser.set_selected(XPath.input_labelled('New'))
+
+    browser.type(XPath.input_labelled('Name'), 'myname')
+    browser.type(XPath.input_labelled('Surname'), 'mysurname')
+    browser.type(XPath.input_labelled('ID card number'), '77')
+
+
+    browser.click(XPath.label().with_text('I agree to the terms and conditions'))
+    browser.wait_for_element_visible(fixture.investment_allocation_details)
+
+    browser.type(XPath.input_labelled('Total amount'), '1000')
+
+    # Check calculating totals
+    browser.type(fixture.percentage_input_for('Fund A'), '100')
+    #browser.wait_for(fixture.percentage_total_is, '80')
+
+    browser.type(fixture.percentage_input_for('Fund B'), '100')
+    #browser.wait_for(fixture.percentage_total_is, '160')
+
+    # Check DomainException upon submit with incorrect totals
+    browser.click(XPath.button_labelled('Submit'))
+    browser.wait_for_element_visible(fixture.domain_exception_alert)
+
+    #change 1
+    #browser.type(fixture.percentage_input_for('Fund B'), '0')
+    #browser.wait_for(fixture.percentage_total_is, '100')
+
+    browser.set_selected(XPath.input_labelled('Amount'))
+    browser.type(fixture.amount_input_for('Fund A'), '900')
+    browser.type(fixture.amount_input_for('Fund B'), '101')
+    browser.type(XPath.input_labelled('Total amount'), '1001')
+
+    #change 2
+    browser.set_selected(XPath.input_labelled('Existing'))
+
+    browser.wait_for_element_visible(fixture.investor_information)
+    browser.wait_for_element_not_visible(fixture.new_investor_specific_information)
+
+    browser.type(XPath.input_labelled('Existing account number'), '1234')
+
+    # Check successful submit
+    browser.click(XPath.button_labelled('Submit'))
+    browser.wait_for_element_not_visible(fixture.domain_exception_alert)
+    browser.wait_for_element_not_visible(fixture.concurrency_exception_alert)
+
